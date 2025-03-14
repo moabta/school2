@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة درجات الطلاب</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+        
+        .form-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .form-group input, .form-group select {
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+        
+        .btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+        
+        .btn-danger {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #c0392b;
+        }
+        
+        .btn-success {
+            background-color: #2ecc71;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #27ae60;
+        }
+        
+        .table-container {
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        table th, table td {
+            padding: 12px 15px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+        
+        table th {
+            background-color: #3498db;
+            color: white;
+            font-weight: bold;
+        }
+        
+        table tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        
+        table tr:hover {
+            background-color: #e6f7ff;
+        }
+        
+        .charts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .chart-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .qr-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .qr-preview {
+            max-width: 200px;
+            max-height: 200px;
+            margin-top: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        @media (max-width: 768px) {
+            .form-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .charts {
+                grid-template-columns: 1fr;
+            }
+            
+            .actions {
+                flex-direction: column;
+            }
+            
+            .actions button {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>نظام إدارة درجات الطلاب</h1>
+        
+        <!-- نموذج إدخال البيانات -->
+        <div class="form-container">
+            <div class="form-group">
+                <label for="teacherName">اسم المعلم/ة:</label>
+                <input type="text" id="teacherName" required>
+            </div>
+            <div class="form-group">
+                <label for="subject">المادة الدراسية:</label>
+                <input type="text" id="subject" required>
+            </div>
+            <div class="form-group">
+                <label for="className">الفصل الدراسي:</label>
+                <input type="text" id="className" required>
+            </div>
+        </div>
+        
+        <div id="alert" class="alert"></div>
+        
+        <!-- نموذج إضافة طالب -->
+        <div class="form-container">
+            <div class="form-group">
+                <label for="studentName">اسم الطالب/ة:</label>
+                <input type="text" id="studentName" required>
+            </div>
+            <div class="form-group">
+                <label for="grade">الدرجة (0-10):</label>
+                <input type="number" id="grade" min="0" max="10" step="0.1" required>
+            </div>
+            <div class="form-group" style="justify-content: flex-end;">
+                <button id="addStudent" class="btn btn-primary">إضافة الطالب</button>
+            </div>
+        </div>
+        
+        <!-- جدول الطلاب -->
+        <div class="table-container" id="tableContainer">
+            <h2>قائمة الطلاب</h2>
+            <table id="studentsTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>اسم الطالب/ة</th>
+                        <th>الدرجة</th>
+                        <th>التقدير</th>
+                        <th>الإجراءات</th>
+                    </tr>
+                </thead>
+                <tbody id="studentsTableBody">
+                    <!-- سيتم ملء البيانات بواسطة JavaScript -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- الرسوم البيانية -->
+        <div class="charts">
+            <div class="chart-container">
+                <h2>توزيع الدرجات</h2>
+                <canvas id="gradesChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>نسبة النجاح والرسوب</h2>
+                <canvas id="passFailChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- قسم رمز QR -->
+        <div class="qr-container">
+            <h2>إضافة رمز QR</h2>
+            <input type="file" id="qrCodeUpload" accept="image/*">
+            <img id="qrPreview" class="qr-preview" alt="معاينة رمز QR">
+        </div>
+        
+        <!-- الإجراءات -->
+        <div class="actions">
+            <button id="exportPdf" class="btn btn-success">تصدير إلى PDF</button>
+            <button id="clearData" class="btn btn-danger">مسح جميع البيانات</button>
+        </div>
+    </div>
+
+    <script>
+        // تعريف المتغيرات العامة
+        const { jsPDF } = window.jspdf;
+        let students = [];
+        let gradesChart;
+        let passFailChart;
+        
+        // عناصر الصفحة
+        const teacherNameInput = document.getElementById('teacherName');
+        const subjectInput = document.getElementById('subject');
+        const classNameInput = document.getElementById('className');
+        const studentNameInput = document.getElementById('studentName');
+        const gradeInput = document.getElementById('grade');
+        const addStudentBtn = document.getElementById('addStudent');
+        const studentsTableBody = document.getElementById('studentsTableBody');
+        const qrCodeUpload = document.getElementById('qrCodeUpload');
+        const qrPreview = document.getElementById('qrPreview');
+        const exportPdfBtn = document.getElementById('exportPdf');
+        const clearDataBtn = document.getElementById('clearData');
+        const alertElement = document.getElementById('alert');
+        
+        // تهيئة الرسوم البيانية
+        function initCharts() {
+            // رسم توزيع الدرجات
+            const gradesCtx = document.getElementById('gradesChart').getContext('2d');
+            gradesChart = new Chart(gradesCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['ممتاز (9-10)', 'جيد جدًا (8-8.9)', 'جيد (7-7.9)', 'مقبول (6-6.9)', 'ضعيف (أقل من 6)'],
+                    datasets: [{
+                        label: 'عدد الطلاب',
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: [
+                            '#27ae60',
+                            '#2ecc71',
+                            '#3498db',
+                            '#f39c12',
+                            '#e74c3c'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'توزيع درجات الطلاب'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            stepSize: 1
+                        }
+                    }
+                }
+            });
+            
+            // رسم نسبة النجاح والرسوب
+            const passFailCtx = document.getElementById('passFailChart').getContext('2d');
+            passFailChart = new Chart(passFailCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['ناجح (6 فأكثر)', 'راسب (أقل من 6)'],
+                    datasets: [{
+                        data: [0, 0],
+                        backgroundColor: [
+                            '#2ecc71',
+                            '#e74c3c'
+                        ],
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'نسبة النجاح والرسوب'
+                        }
+                    }
+                }
+            });
+        }
+        
+        // تحديث الرسوم البيانية
+        function updateCharts() {
+            // إحصاءات توزيع الدرجات
+            const gradeRanges = [0, 0, 0, 0, 0]; // ممتاز، جيد جدًا، جيد، مقبول، ضعيف
+            
+            students.forEach(student => {
+                const grade = student.grade;
+                if (grade >= 9) {
+                    gradeRanges[0]++;
+                } else if (grade >= 8) {
+                    gradeRanges[1]++;
+                } else if (grade >= 7) {
+                    gradeRanges[2]++;
+                } else if (grade >= 6) {
+                    gradeRanges[3]++;
+                } else {
+                    gradeRanges[4]++;
+                }
+            });
+            
+            gradesChart.data.datasets[0].data = gradeRanges;
+            gradesChart.update();
+            
+            // إحصاءات النجاح والرسوب
+            const passCount = students.filter(student => student.grade >= 6).length;
+            const failCount = students.length - passCount;
+            
+            passFailChart.data.datasets[0].data = [passCount, failCount];
+            passFailChart.update();
+        }
+        
+        // الحصول على التقدير بناءً على الدرجة
+        function getGradeLevel(grade) {
+            if (grade >= 9) {
+                return "ممتاز";
+            } else if (grade >= 8) {
+                return "جيد جدًا";
+            } else if (grade >= 7) {
+                return "جيد";
+            } else if (grade >= 6) {
+                return "مقبول";
+            } else {
+                return "ضعيف";
+            }
+        }
+        
+        // إضافة طالب إلى الجدول
+        function addStudentToTable() {
+            const studentName = studentNameInput.value.trim();
+            const grade = parseFloat(gradeInput.value);
+            
+            if (!studentName || isNaN(grade) || grade < 0 || grade > 10) {
+                showAlert("يرجى إدخال اسم الطالب ودرجة صحيحة (0-10)", "danger");
+                return;
+            }
+            
+            // التحقق من عدم تكرار الاسم
+            if (students.some(student => student.name === studentName)) {
+                showAlert("هذا الطالب موجود بالفعل في القائمة", "danger");
+                return;
+            }
+            
+            // إضافة الطالب إلى المصفوفة
+            students.push({
+                name: studentName,
+                grade: grade
+            });
+            
+            // تحديث الجدول
+            renderStudentsTable();
+            
+            // تحديث الرسوم البيانية
+            updateCharts();
+            
+            // مسح الحقول
+            studentNameInput.value = '';
+            gradeInput.value = '';
+            
+            showAlert("تم إضافة الطالب بنجاح", "success");
+        }
+        
+        // عرض الطلاب في الجدول
+        function renderStudentsTable() {
+            studentsTableBody.innerHTML = '';
+            
+            students.forEach((student, index) => {
+                const row = document.createElement('tr');
+                
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${student.name}</td>
+                    <td>${student.grade}</td>
+                    <td>${getGradeLevel(student.grade)}</td>
+                    <td>
+                        <button class="btn btn-danger delete-btn" data-index="${index}">حذف</button>
+                    </td>
+                `;
+                
+                studentsTableBody.appendChild(row);
+            });
+            
+            // إضافة مستمعي الأحداث لأزرار الحذف
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    deleteStudent(index);
+                });
+            });
+        }
+        
+        // حذف طالب من القائمة
+        function deleteStudent(index) {
+            if (confirm(`هل أنت متأكد من حذف الطالب "${students[index].name}"؟`)) {
+                students.splice(index, 1);
+                renderStudentsTable();
+                updateCharts();
+                showAlert("تم حذف الطالب بنجاح", "success");
+            }
+        }
+        
+        // معالجة تحميل صورة QR
+        function handleQRUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    qrPreview.src = e.target.result;
+                    qrPreview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        // تصدير البيانات إلى PDF
+        function exportToPDF() {
+            const teacherName = teacherNameInput.value.trim();
+            const subject = subjectInput.value.trim();
+            const className = classNameInput.value.trim();
+            
+            if (!teacherName || !subject || !className) {
+                showAlert("يرجى إدخال اسم المعلم والمادة والفصل قبل التصدير", "danger");
+                return;
+            }
+            
+            if (students.length === 0) {
+                showAlert("لا يوجد طلاب في القائمة للتصدير", "danger");
+                return;
+            }
+            
+            // إنشاء PDF
+            const doc = new jsPDF();
+            
+            // إضافة معلومات الرأس
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(18);
+            doc.text("تقرير درجات الطلاب", 105, 20, { align: "center" });
+            
+            doc.setFontSize(12);
+            doc.text(`المعلم/ة: ${teacherName}`, 20, 40);
+            doc.text(`المادة: ${subject}`, 20, 50);
+            doc.text(`الفصل: ${className}`, 20, 60);
+            doc.text(`عدد الطلاب: ${students.length}`, 20, 70);
+            
+            // إضافة تاريخ التقرير
+            const today = new Date();
+            const dateStr = today.toLocaleDateString('ar-SA');
+            doc.text(`تاريخ التقرير: ${dateStr}`, 130, 40);
+            
+            // إضافة الجدول
+            const tableColumn = ["#", "اسم الطالب", "الدرجة", "التقدير"];
+            const tableRows = [];
+            
+            students.forEach((student, index) => {
+                const gradeLevel = getGradeLevel(student.grade);
+                const rowData = [
+                    (index + 1).toString(),
+                    student.name,
+                    student.grade.toString(),
+                    gradeLevel
+                ];
+                tableRows.push(rowData);
+            });
+            
+            doc.autoTable({
+                head: [tableColumn],
+                body: tableRows,
+                startY: 80,
+                theme: 'grid',
+                styles: {
+                    font: 'helvetica',
+                    halign: 'center'
+                },
+                headStyles: {
+                    fillColor: [52, 152, 219]
+                }
+            });
+            
+            // إضافة إحصائيات
+            const finalY = doc.lastAutoTable.finalY + 10;
+            
+            // حساب المتوسط والأعلى والأدنى
+            const grades = students.map(s => s.grade);
+            const average = grades.reduce((a, b) => a + b, 0) / grades.length;
+            const highest = Math.max(...grades);
+            const lowest = Math.min(...grades);
+            
+            doc.text("الإحصائيات:", 20, finalY + 10);
+            doc.text(`متوسط الدرجات: ${average.toFixed(2)}`, 20, finalY + 20);
+            doc.text(`أعلى درجة: ${highest}`, 20, finalY + 30);
+            doc.text(`أدنى درجة: ${lowest}`, 20, finalY + 40);
+            
+            // إضافة صورة QR إن وجدت
+            if (qrPreview.style.display !== 'none') {
+                html2canvas(qrPreview).then(canvas => {
+                    const qrImgData = canvas.toDataURL('image/png');
+                    doc.addImage(qrImgData, 'PNG', 130, finalY + 10, 40, 40);
+                    doc.save(`تقرير_درجات_${subject}_${className}.pdf`);
+                });
+            } else {
+                doc.save(`تقرير_درجات_${subject}_${className}.pdf`);
+            }
+            
+            showAlert("تم تصدير التقرير بنجاح", "success");
+        }
+        
+        // مسح جميع البيانات
+        function clearAllData() {
+            if (confirm("هل أنت متأكد من مسح جميع البيانات؟ لا يمكن التراجع عن هذا الإجراء.")) {
+                students = [];
+                renderStudentsTable();
+                updateCharts();
+                
+                studentNameInput.value = '';
+                gradeInput.value = '';
+                
+                showAlert("تم مسح جميع البيانات بنجاح", "success");
+            }
+        }
+        
+        // عرض رسالة تنبيه
+        function showAlert(message, type) {
+            alertElement.textContent = message;
+            alertElement.className = `alert alert-${type}`;
+            alertElement.style.display = 'block';
+            
+            setTimeout(() => {
+                alertElement.style.display = 'none';
+            }, 3000);
+        }
+        
+        // إضافة مستمعي الأحداث
+        document.addEventListener('DOMContentLoaded', function() {
+            // تهيئة الرسوم البيانية
+            initCharts();
+            
+            // إضافة طالب
+            addStudentBtn.addEventListener('click', addStudentToTable);
+            
+            // التعامل مع إدخال الدرجة بالضغط على Enter
+            gradeInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    addStudentToTable();
+                }
+            });
+            
+            // تحميل صورة QR
+            qrCodeUpload.addEventListener('change', handleQRUpload);
+            
+            // تصدير إلى PDF
+            exportPdfBtn.addEventListener('click', exportToPDF);
+            
+            // مسح البيانات
+            clearDataBtn.addEventListener('click', clearAllData);
+        });
+    </script>
+</body>
+</html>
