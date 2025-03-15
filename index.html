@@ -7,6 +7,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="font.js"></script> <!-- تحميل ملف الخط -->
     <style>
         * {
             box-sizing: border-box;
@@ -352,16 +354,19 @@
                 }
             });
             
-            // رسم نسبة النجاح والرسوب
+            // رسم نسبة التقديرات
             const passFailCtx = document.getElementById('passFailChart').getContext('2d');
             passFailChart = new Chart(passFailCtx, {
                 type: 'pie',
                 data: {
-                    labels: ['ناجح (6 فأكثر)', 'راسب (أقل من 6)'],
+                    labels: ['ممتاز', 'جيد جدًا', 'جيد', 'مقبول', 'ضعيف'],
                     datasets: [{
-                        data: [0, 0],
+                        data: [0, 0, 0, 0, 0],
                         backgroundColor: [
+                            '#27ae60',
                             '#2ecc71',
+                            '#3498db',
+                            '#f39c12',
                             '#e74c3c'
                         ],
                         hoverOffset: 4
@@ -375,7 +380,18 @@
                         },
                         title: {
                             display: true,
-                            text: 'نسبة النجاح والرسوب'
+                            text: 'توزيع التقديرات'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.dataset.data.reduce((acc, val) => acc + val, 0);
+                                    const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                    return `${label}: ${percentage}% (${value} طالب)`;
+                                }
+                            }
                         }
                     }
                 }
@@ -405,11 +421,8 @@
             gradesChart.data.datasets[0].data = gradeRanges;
             gradesChart.update();
             
-            // إحصاءات النجاح والرسوب
-            const passCount = students.filter(student => student.grade >= 6).length;
-            const failCount = students.length - passCount;
-            
-            passFailChart.data.datasets[0].data = [passCount, failCount];
+            // إحصاءات نسب التقديرات (تعديل للرسم الدائري)
+            passFailChart.data.datasets[0].data = gradeRanges;
             passFailChart.update();
         }
         
@@ -531,80 +544,233 @@
                 return;
             }
             
-            // إنشاء PDF
-            const doc = new jsPDF();
+            // إنشاء عنصر موقت يحتوي على محتوى الطباعة للصفحة الأولى
+            const printContent = document.createElement('div');
+            printContent.style.width = '210mm';
+            printContent.style.height = '297mm';
+            printContent.style.padding = '20mm';
+            printContent.style.boxSizing = 'border-box';
+            printContent.style.backgroundColor = 'white';
+            printContent.style.fontFamily = 'Arial, sans-serif';
+            printContent.style.direction = 'rtl';
+            printContent.style.position = 'absolute';
+            printContent.style.top = '-9999px';
             
-            // إضافة معلومات الرأس
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(18);
-            doc.text("تقرير درجات الطلاب", 105, 20, { align: "center" });
+            // إضافة الترويسة
+            const header = document.createElement('div');
+            header.style.textAlign = 'center';
+            header.style.marginBottom = '20px';
+            header.style.position = 'relative';
             
-            doc.setFontSize(12);
-            doc.text(`المعلم/ة: ${teacherName}`, 20, 40);
-            doc.text(`المادة: ${subject}`, 20, 50);
-            doc.text(`الفصل: ${className}`, 20, 60);
-            doc.text(`عدد الطلاب: ${students.length}`, 20, 70);
+            let headerHTML = `
+                <h1 style="color: #2c3e50; margin-bottom: 10px;">تقرير درجات الطلاب</h1>
+                <div style="display: flex; justify-content: space-between; margin-top: 30px;">
+                    <div style="text-align: right; width: 60%;">
+                        <p><strong>المعلم/ة:</strong> ${teacherName}</p>
+                        <p><strong>المادة:</strong> ${subject}</p>
+                        <p><strong>الفصل:</strong> ${className}</p>
+                        <p><strong>التاريخ:</strong> ${new Date().toLocaleDateString('ar-EG')}</p>
+                        <p><strong>عدد الطلاب:</strong> ${students.length}</p>
+                    </div>`;
+                    
+            // إضافة صورة QR إذا كانت متاحة
+            if (qrPreview.style.display !== 'none') {
+                headerHTML += `
+                    <div style="text-align: left; width: 100px;">
+                        <img id="qrPreviewForPDF" src="${qrPreview.src}" style="width: 100px; height: 100px; object-fit: contain;">
+                    </div>`;
+            }
             
-            // إضافة تاريخ التقرير
-            const today = new Date();
-            const dateStr = today.toLocaleDateString('ar-SA');
-            doc.text(`تاريخ التقرير: ${dateStr}`, 130, 40);
+            headerHTML += `</div>`;
+            header.innerHTML = headerHTML;
+            printContent.appendChild(header);
             
-            // إضافة الجدول
-            const tableColumn = ["#", "اسم الطالب", "الدرجة", "التقدير"];
-            const tableRows = [];
+            // إضافة جدول الطلاب
+            const table = document.createElement('table');
+            table.style.width = '100%';
+            table.style.borderCollapse = 'collapse';
+            table.style.marginBottom = '20px';
+            table.style.direction = 'rtl';
             
+            // إضافة ترويسة الجدول
+            let tableHTML = `
+                <thead>
+                    <tr style="background-color: #3498db; color: white;">
+                        <th style="padding: 10px; border: 1px solid #ddd;">#</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">اسم الطالب/ة</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">الدرجة</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">التقدير</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+            
+            // إضافة صفوف الطلاب
             students.forEach((student, index) => {
-                const gradeLevel = getGradeLevel(student.grade);
-                const rowData = [
-                    (index + 1).toString(),
-                    student.name,
-                    student.grade.toString(),
-                    gradeLevel
-                ];
-                tableRows.push(rowData);
+                const rowColor = index % 2 === 0 ? 'white' : '#f2f2f2';
+                tableHTML += `
+                    <tr style="background-color: ${rowColor};">
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${index + 1}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${student.name}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${student.grade}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${getGradeLevel(student.grade)}</td>
+                    </tr>
+                `;
             });
             
-            doc.autoTable({
-                head: [tableColumn],
-                body: tableRows,
-                startY: 80,
-                theme: 'grid',
-                styles: {
-                    font: 'helvetica',
-                    halign: 'center'
-                },
-                headStyles: {
-                    fillColor: [52, 152, 219]
-                }
-            });
+            tableHTML += '</tbody>';
+            table.innerHTML = tableHTML;
+            printContent.appendChild(table);
             
-            // إضافة إحصائيات
-            const finalY = doc.lastAutoTable.finalY + 10;
+            // إضافة الإحصائيات
+            const stats = document.createElement('div');
+            stats.style.marginBottom = '20px';
             
-            // حساب المتوسط والأعلى والأدنى
+            // حساب الإحصائيات
             const grades = students.map(s => s.grade);
             const average = grades.reduce((a, b) => a + b, 0) / grades.length;
             const highest = Math.max(...grades);
             const lowest = Math.min(...grades);
             
-            doc.text("الإحصائيات:", 20, finalY + 10);
-            doc.text(`متوسط الدرجات: ${average.toFixed(2)}`, 20, finalY + 20);
-            doc.text(`أعلى درجة: ${highest}`, 20, finalY + 30);
-            doc.text(`أدنى درجة: ${lowest}`, 20, finalY + 40);
+            // عدد الطلاب في كل مستوى
+            const excellent = students.filter(s => s.grade >= 9).length;
+            const veryGood = students.filter(s => s.grade >= 8 && s.grade < 9).length;
+            const good = students.filter(s => s.grade >= 7 && s.grade < 8).length;
+            const pass = students.filter(s => s.grade >= 6 && s.grade < 7).length;
+            const fail = students.filter(s => s.grade < 6).length;
             
-            // إضافة صورة QR إن وجدت
-            if (qrPreview.style.display !== 'none') {
-                html2canvas(qrPreview).then(canvas => {
-                    const qrImgData = canvas.toDataURL('image/png');
-                    doc.addImage(qrImgData, 'PNG', 130, finalY + 10, 40, 40);
-                    doc.save(`تقرير_درجات_${subject}_${className}.pdf`);
+            stats.innerHTML = `
+                <h2 style="color: #2c3e50; margin-bottom: 10px;">الإحصائيات</h2>
+                <div style="display: flex; justify-content: space-between;">
+                    <div>
+                        <p><strong>متوسط الدرجات:</strong> ${average.toFixed(2)}</p>
+                        <p><strong>أعلى درجة:</strong> ${highest}</p>
+                        <p><strong>أدنى درجة:</strong> ${lowest}</p>
+                    </div>
+                    <div>
+                        <p><strong>عدد الطلاب بتقدير ممتاز:</strong> ${excellent}</p>
+                        <p><strong>عدد الطلاب بتقدير جيد جدًا:</strong> ${veryGood}</p>
+                        <p><strong>عدد الطلاب بتقدير جيد:</strong> ${good}</p>
+                        <p><strong>عدد الطلاب بتقدير مقبول:</strong> ${pass}</p>
+                        <p><strong>عدد الطلاب بتقدير ضعيف:</strong> ${fail}</p>
+                    </div>
+                </div>
+            `;
+            printContent.appendChild(stats);
+            
+            // إضافة مكان للتوقيع
+            const signature = document.createElement('div');
+            signature.style.marginTop = '40px';
+            signature.style.display = 'flex';
+            signature.style.justifyContent = 'space-between';
+            signature.innerHTML = `
+                <div style="width: 45%;">
+                    <p>توقيع المعلم/ة: __________________</p>
+                </div>
+                <div style="width: 45%;">
+                    <p>ختم المدرسة: __________________</p>
+                </div>
+            `;
+            printContent.appendChild(signature);
+            
+            // إضافة العنصر المؤقت للصفحة
+            document.body.appendChild(printContent);
+            
+            // إنشاء العناصر الموقتة للرسوم البيانية
+            const gradesChartContainer = document.createElement('div');
+            gradesChartContainer.style.width = '500px';
+            gradesChartContainer.style.height = '300px';
+            gradesChartContainer.style.backgroundColor = 'white';
+            
+            const passFailChartContainer = document.createElement('div');
+            passFailChartContainer.style.width = '500px';
+            passFailChartContainer.style.height = '300px';
+            passFailChartContainer.style.backgroundColor = 'white';
+            
+            // نسخ الرسوم البيانية إلى العناصر الموقتة
+            gradesChartContainer.appendChild(document.getElementById('gradesChart').cloneNode(true));
+            passFailChartContainer.appendChild(document.getElementById('passFailChart').cloneNode(true));
+            
+            // إضافة العناصر الموقتة إلى المستند
+            document.body.appendChild(gradesChartContainer);
+            document.body.appendChild(passFailChartContainer);
+            
+            // استخدام html2canvas لتحويل المحتويات إلى صور
+            html2canvas(printContent, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                allowTaint: true,
+                backgroundColor: '#ffffff'
+            }).then(contentCanvas => {
+                // التقاط الرسم البياني الأول
+                html2canvas(document.getElementById('gradesChart').parentNode, {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: '#ffffff'
+                }).then(chart1Canvas => {
+                    // التقاط الرسم البياني الثاني
+                    html2canvas(document.getElementById('passFailChart').parentNode, {
+                        scale: 2,
+                        useCORS: true,
+                        backgroundColor: '#ffffff'
+                    }).then(chart2Canvas => {
+                        // إنشاء ملف PDF
+                        const { jsPDF } = window.jspdf;
+                        const pdf = new jsPDF('p', 'mm', 'a4');
+                        
+                        // إضافة صفحة المحتوى
+                        const contentImgData = contentCanvas.toDataURL('image/png');
+                        pdf.addImage(contentImgData, 'PNG', 0, 0, 210, 297);
+                        
+                        // إضافة صفحة الرسوم البيانية
+                        pdf.addPage();
+                        
+                        // العنوان
+                        pdf.setFontSize(16);
+                        pdf.text('الرسومات البيانية', 105, 20, { align: 'center' });
+                        
+                        // إضافة الرسم البياني الأول
+                        const chart1ImgData = chart1Canvas.toDataURL('image/png');
+                        pdf.addImage(chart1ImgData, 'PNG', 15, 30, 180, 100);
+                        
+                        // العنوان الفرعي للرسم البياني الثاني
+                        pdf.text('توزيع النسب المئوية للتقديرات', 105, 140, { align: 'center' });
+                        
+                        // إضافة الرسم البياني الثاني
+                        const chart2ImgData = chart2Canvas.toDataURL('image/png');
+                        pdf.addImage(chart2ImgData, 'PNG', 50, 150, 110, 110);
+                        
+                        // حفظ ملف PDF
+                        pdf.save(`تقرير_درجات_${subject}_${className}.pdf`);
+                        
+                        // إزالة العناصر الموقتة
+                        document.body.removeChild(printContent);
+                        document.body.removeChild(gradesChartContainer);
+                        document.body.removeChild(passFailChartContainer);
+                        
+                        showAlert("تم تصدير التقرير بنجاح", "success");
+                    }).catch(error => {
+                        console.error("خطأ في تصدير الرسم البياني الثاني:", error);
+                        document.body.removeChild(printContent);
+                        document.body.removeChild(gradesChartContainer);
+                        document.body.removeChild(passFailChartContainer);
+                        showAlert("حدث خطأ أثناء تصدير التقرير", "danger");
+                    });
+                }).catch(error => {
+                    console.error("خطأ في تصدير الرسم البياني الأول:", error);
+                    document.body.removeChild(printContent);
+                    document.body.removeChild(gradesChartContainer);
+                    document.body.removeChild(passFailChartContainer);
+                    showAlert("حدث خطأ أثناء تصدير التقرير", "danger");
                 });
-            } else {
-                doc.save(`تقرير_درجات_${subject}_${className}.pdf`);
-            }
-            
-            showAlert("تم تصدير التقرير بنجاح", "success");
+            }).catch(error => {
+                console.error("خطأ في تصدير المحتوى:", error);
+                document.body.removeChild(printContent);
+                document.body.removeChild(gradesChartContainer);
+                document.body.removeChild(passFailChartContainer);
+                showAlert("حدث خطأ أثناء تصدير التقرير", "danger");
+            });
         }
         
         // مسح جميع البيانات
